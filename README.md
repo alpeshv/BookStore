@@ -19,3 +19,11 @@ cat <filename>.txt
 - Fake SMTP Service
 - Pagination
 - Caching
+
+## System Design
+
+### Project Structure
+![Project Structure](https://github.com/alpeshv/BookStore/blob/master/charts/project-structure.jpg)
+
+### System Architecture
+![System Design](https://github.com/alpeshv/BookStore/blob/master/charts/system-design.jpg)
