@@ -12,6 +12,7 @@ using BookStore.Service.Interfaces;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
+using Serilog;
 using Xunit;
 
 namespace BookStore.UnitTests.BookStore.Api
@@ -27,8 +28,9 @@ namespace BookStore.UnitTests.BookStore.Api
 
         public BooksControllerTests()
         {
+            var logger = new Mock<ILogger>();
             _bookServiceMock = new Mock<IBookService>();
-            _booksController = new BooksController(_bookServiceMock.Object);
+            _booksController = new BooksController(logger.Object, _bookServiceMock.Object);
         }
 
         [Fact]

@@ -87,8 +87,6 @@ namespace BookStore.Api
                 {
                     option.SwaggerEndpoint(swaggerOptions.UiEndpoint, swaggerOptions.Description);
                 });
-
-                app.UseSerilogRequestLogging();
             }
 
             app.UseHealthChecks("/health", new HealthCheckOptions
