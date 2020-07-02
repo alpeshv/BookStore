@@ -5,7 +5,7 @@ Run `docker-compose up --build` from src folder
 
 Swagger: localhost:3000/swagger
 
-Port 3000 is bound to api container port 80 in docker-compose.yml. The current docker-compose.yml is creating api contaner under *development* mode.
+Port 3000 is bound to api container port 80 in docker-compose.yml. The current docker-compose.yml is creating api container under *development* mode.
 
 ## View log file
 ```
