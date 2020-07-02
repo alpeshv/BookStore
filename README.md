@@ -12,3 +12,10 @@ docker exec -t -i <container_name> /bin/bash
 cd logs
 cat <filename>.txt
 ```
+
+## Missing functionality
+- JWT Authorisation
+- Health check middleware
+- Fake SMTP Service
+- Pagination
+- Caching
