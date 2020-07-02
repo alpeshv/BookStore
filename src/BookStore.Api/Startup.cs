@@ -1,17 +1,22 @@
 using System.Data;
 using System.IO;
+using System.Linq;
+using BookStore.Api.Contracts.Responses;
 using BookStore.Api.Options;
 using BookStore.DataAccess;
 using BookStore.Domain.Interfaces;
 using BookStore.Service;
 using BookStore.Service.Interfaces;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.OpenApi.Models;
 using MySql.Data.MySqlClient;
+using Newtonsoft.Json;
 using Serilog;
 using ILogger = Serilog.ILogger;
 
@@ -53,6 +58,9 @@ namespace BookStore.Api
                 .ReadFrom.Configuration(configuration)
                 .CreateLogger();
 
+            services.AddHealthChecks()
+                .AddCheck<DbHealthCheck>("BookStore-DB");
+
             services.AddSingleton<ILogger>(logger);
 
             var dbConnectionString = this.Configuration.GetConnectionString("BookStoreConnection");
@@ -82,6 +90,28 @@ namespace BookStore.Api
 
                 app.UseSerilogRequestLogging();
             }
+
+            app.UseHealthChecks("/health", new HealthCheckOptions
+            {
+                ResponseWriter = async (context, report) =>
+                {
+                    context.Response.ContentType = "application/json";
+
+                    var response = new HealthCheckResponse
+                    {
+                        Status = report.Status.ToString(),
+                        Checks = report.Entries.Select(x => new HealthCheck
+                        {
+                            Component = x.Key,
+                            Status = x.Value.Status.ToString(),
+                            Description = x.Value.Description
+                        }),
+                        Duration = report.TotalDuration
+                    };
+
+                    await context.Response.WriteAsync(await JsonConvert.SerializeObjectAsync(response));
+                }
+            });
 
             app.UseHttpsRedirection();
 
