@@ -107,7 +107,7 @@ namespace BookStore.Api
                         Duration = report.TotalDuration
                     };
 
-                    await context.Response.WriteAsync(await JsonConvert.SerializeObjectAsync(response));
+                    await context.Response.WriteAsync(JsonConvert.SerializeObject(response));
                 }
             });
 
