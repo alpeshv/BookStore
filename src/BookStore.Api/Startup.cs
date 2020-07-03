@@ -2,6 +2,7 @@ using System.Data;
 using System.IO;
 using System.Linq;
 using BookStore.Api.Contracts.Responses;
+using BookStore.Api.Helpers;
 using BookStore.Api.Options;
 using BookStore.DataAccess;
 using BookStore.Domain.Interfaces;
@@ -66,6 +67,7 @@ namespace BookStore.Api
             var dbConnectionString = this.Configuration.GetConnectionString("BookStoreConnection");
             services.AddTransient<IDbConnection>((sp) => new MySqlConnection(dbConnectionString));
 
+            services.AddScoped<ILinkGenerator, LinkGeneratorHelper>();
             services.AddTransient<IBookRepository, BookRepository>();
             services.AddTransient<IBookService, BookService>();
         }

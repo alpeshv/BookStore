@@ -1,6 +1,6 @@
 ﻿namespace BookStore.Api.Contracts.Queries
 {
-    public class GetAllBooksQuery
+    public class GetBooksQuery
     {
         public string Category { get; set; }
     }

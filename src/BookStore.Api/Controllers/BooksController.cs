@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using BookStore.Api.Contracts.Queries;
 using BookStore.Api.Contracts.Requests;
 using BookStore.Api.Contracts.Responses;
+using BookStore.Api.Helpers;
 using BookStore.Domain;
 using BookStore.Service.Interfaces;
 using Microsoft.AspNetCore.Http;
@@ -17,23 +18,26 @@ namespace BookStore.Api.Controllers
     [ApiController]
     public class BooksController : ControllerBase
     {
+        
         private readonly ILogger _logger;
         private readonly IBookService _bookService;
+        private readonly ILinkGenerator _linkGenerator;
 
-        public BooksController(ILogger logger, IBookService bookService)
+        public BooksController(ILogger logger, IBookService bookService, ILinkGenerator linkGenerator) 
         {
             _logger = logger;
             _bookService = bookService;
+            _linkGenerator = linkGenerator;
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<BookResponse>>> GetAll([FromQuery] GetAllBooksQuery query)
+        public async Task<ActionResult<IEnumerable<BookResponse>>> GetAll([FromQuery] GetBooksQuery query)
         {
             _logger.Debug("GET api/v1/books");
 
             var books = await _bookService.GetAllAsync(query.Category);
             
-            return Ok(books.Select(b => new BookResponse(b)).ToArray());
+            return Ok(books.Select(b => new BookResponse(b, CreateLinks(b.Id))).ToArray());
         }
 
         [HttpGet("{id}")]
@@ -48,7 +52,7 @@ namespace BookStore.Api.Controllers
             if (book == null)
                 return NotFound();
 
-            return Ok(new BookResponse(book));
+            return Ok(new BookResponse(book, CreateLinks(book.Id)));
         }
 
         [HttpPost]
@@ -64,7 +68,7 @@ namespace BookStore.Api.Controllers
             if (addedBook == null)
                 return BadRequest();
 
-            return CreatedAtAction(nameof(GetById), new { id = addedBook.Id }, new BookResponse(addedBook));
+            return CreatedAtAction(nameof(GetById), new {id = addedBook.Id}, new BookResponse(addedBook, CreateLinks(addedBook.Id)));
         }
 
         [HttpPut("{id}")]
@@ -81,7 +85,7 @@ namespace BookStore.Api.Controllers
             if (updatedBook == null)
                 return NotFound();
 
-            return Ok(new BookResponse(updatedBook));
+            return Ok(new BookResponse(updatedBook, CreateLinks(updatedBook.Id)));
         }
 
         [HttpDelete("{id}")]
@@ -97,6 +101,11 @@ namespace BookStore.Api.Controllers
                 return Ok();
 
             return NotFound();
+        }
+
+        private IEnumerable<Link> CreateLinks(Guid id)
+        {
+            return _linkGenerator.CreateLinks(HttpContext, nameof(GetById), nameof(Update), nameof(Delete), id);
         }
     }
 }

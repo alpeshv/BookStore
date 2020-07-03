@@ -1,15 +1,16 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net;
 using System.Threading.Tasks;
 using BookStore.Api.Contracts.Queries;
 using BookStore.Api.Contracts.Requests;
 using BookStore.Api.Contracts.Responses;
 using BookStore.Api.Controllers;
+using BookStore.Api.Helpers;
 using BookStore.Domain;
 using BookStore.Service.Interfaces;
 using FluentAssertions;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
 using Serilog;
@@ -20,17 +21,30 @@ namespace BookStore.UnitTests.BookStore.Api
     public class BooksControllerTests
     {
         private readonly Mock<IBookService> _bookServiceMock;
+        private readonly Mock<ILinkGenerator> _linkGeneratorMock;
+
         private readonly BooksController _booksController;
 
-        const string Category = "Computer";
-        const string BookTitle = "Unit Testing";
-        readonly Guid bookId = Guid.NewGuid();
+        private const string Category = "Computer";
+        private const string BookTitle = "Unit Testing";
+        private readonly Guid _bookId = Guid.NewGuid();
+        private readonly List<Link> _links;
 
         public BooksControllerTests()
         {
-            var logger = new Mock<ILogger>();
+            var loggerMock = new Mock<ILogger>();
             _bookServiceMock = new Mock<IBookService>();
-            _booksController = new BooksController(logger.Object, _bookServiceMock.Object);
+
+            _linkGeneratorMock = new Mock<ILinkGenerator>();
+            _links = new List<Link>()
+            {
+                new Link("/api/v1/book/1", "self", "GET"),
+                new Link("/api/v1/book/1", "update", "PUT")
+            };
+            _linkGeneratorMock.Setup(x => x.CreateLinks(It.IsAny<HttpContext>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<string>(), It.IsAny<Guid>())).Returns(_links);
+
+            _booksController = new BooksController(loggerMock.Object, _bookServiceMock.Object, _linkGeneratorMock.Object);
         }
 
         [Fact]
@@ -40,7 +54,7 @@ namespace BookStore.UnitTests.BookStore.Api
             _bookServiceMock.Setup(x => x.GetAllAsync(string.Empty)).ReturnsAsync(new List<Book>());
 
             // Act
-            var response = await _booksController.GetAll(new GetAllBooksQuery()
+            var response = await _booksController.GetAll(new GetBooksQuery()
             {
                 Category = string.Empty
             });
@@ -53,20 +67,22 @@ namespace BookStore.UnitTests.BookStore.Api
 
             var data = (IEnumerable<BookResponse>)value;
             data.Should().HaveCount(0);
-        }
 
+            VerifyLinkGeneratorHasNeverBeenCalled();
+        }
+        
         [Fact]
         public async Task GetAll_WithBooks_ReturnsBooksResponse()
         {
             // Arrange
             _bookServiceMock.Setup(x => x.GetAllAsync(Category)).ReturnsAsync(new List<Book>()
             {
-                new Book(bookId, BookTitle, "Computer"),
+                new Book(_bookId, BookTitle, "Computer"),
                 new Book(Guid.NewGuid(), "C# in Nutshell", "Computer"),
             });
 
             // Act
-            var response = await _booksController.GetAll(new GetAllBooksQuery()
+            var response = await _booksController.GetAll(new GetBooksQuery()
             {
                 Category = Category
             });
@@ -80,9 +96,11 @@ namespace BookStore.UnitTests.BookStore.Api
             var books = ((IEnumerable<BookResponse>)value).ToArray();
             books.Should().HaveCount(2);
 
-            books.FirstOrDefault(x => x.Id == bookId && x.Title == BookTitle && x.Category == Category).Should().NotBeNull();
-        }
+            books.FirstOrDefault(x => x.Id == _bookId && x.Title == BookTitle && x.Category == Category).Should().NotBeNull();
 
+            VerifyLinkGeneratorHasBeenCalledFor(Times.Exactly(2));
+        }
+        
         [Fact]
         public async Task GetById_WhenBookNotFound_ReturnsNotFoundResponse()
         {
@@ -95,32 +113,25 @@ namespace BookStore.UnitTests.BookStore.Api
 
             // Assert
             response.Result.Should().BeOfType<NotFoundResult>();
+            VerifyLinkGeneratorHasNeverBeenCalled();
         }
 
         [Fact]
         public async Task GetById_WhenBookFound_ReturnsBookResponse()
         {
             // Arrange
-            _bookServiceMock.Setup(x => x.GetByIdAsync(bookId)).ReturnsAsync(new Book(bookId, BookTitle, Category));
+            _bookServiceMock.Setup(x => x.GetByIdAsync(_bookId)).ReturnsAsync(new Book(_bookId, BookTitle, Category));
 
             // Act
-            var response = await _booksController.GetById(bookId);
+            var response = await _booksController.GetById(_bookId);
 
             // Assert
             response.Result.Should().BeOfType<OkObjectResult>();
-
-            AssertBookResponseValue(response, bookId, BookTitle, Category);
+            
+            AssertBookResponseValue(response, _bookId, BookTitle, Category);
+            VerifyLinkGeneratorHasBeenCalledFor(Times.Once(), _bookId);
         }
-
-        private static void AssertBookResponseValue(ActionResult<BookResponse> response, Guid bookId, string bookTitle, string category)
-        {
-            var value = ((ObjectResult)response.Result).Value;
-            value.Should().BeOfType<BookResponse>();
-
-            var book = (BookResponse)value;
-            AssertBookResponse(book, bookId, bookTitle, category);
-        }
-
+        
         [Fact]
         public async Task Create_InvalidPayload_ReturnsBadRequestResult()
         {
@@ -130,13 +141,14 @@ namespace BookStore.UnitTests.BookStore.Api
 
             // Assert
             response.Result.Should().BeOfType<BadRequestResult>();
+            VerifyLinkGeneratorHasNeverBeenCalled();
         }
 
         [Fact]
         public async Task Create_ValidPayload_ReturnsBookResponse()
         {
             // Arrange
-            _bookServiceMock.Setup(x => x.CreateAsync(It.IsAny<Book>())).ReturnsAsync(new Book(bookId, BookTitle, Category)).Callback<Book>(
+            _bookServiceMock.Setup(x => x.CreateAsync(It.IsAny<Book>())).ReturnsAsync(new Book(_bookId, BookTitle, Category)).Callback<Book>(
                 (book) =>
                 {
                     book.Title.Should().Be(BookTitle);
@@ -153,34 +165,36 @@ namespace BookStore.UnitTests.BookStore.Api
             // Assert
             response.Result.Should().BeOfType<CreatedAtActionResult>();
 
-            AssertBookResponseValue(response, bookId, BookTitle, Category);
+            AssertBookResponseValue(response, _bookId, BookTitle, Category);
+            VerifyLinkGeneratorHasBeenCalledFor(Times.Once(), _bookId);
         }
 
         [Fact]
         public async Task Update_WhenBookNotFound_ReturnsNotFoundResult()
         {
             // Act
-            _bookServiceMock.Setup(x => x.UpdateAsync(bookId, It.IsAny<Book>())).ReturnsAsync((Book)null);
-            var response = await _booksController.Update(bookId, new UpdateBookRequest());
+            _bookServiceMock.Setup(x => x.UpdateAsync(_bookId, It.IsAny<Book>())).ReturnsAsync((Book)null);
+            var response = await _booksController.Update(_bookId, new UpdateBookRequest());
 
             // Assert
             response.Result.Should().BeOfType<NotFoundResult>();
+            VerifyLinkGeneratorHasNeverBeenCalled();
         }
 
         [Fact]
         public async Task Update_WhenBookFound_ReturnsBookResponse()
         {
             // Arrange
-            _bookServiceMock.Setup(x => x.UpdateAsync(bookId, It.IsAny<Book>())).ReturnsAsync(new Book(bookId, BookTitle, Category)).Callback<Guid, Book>(
+            _bookServiceMock.Setup(x => x.UpdateAsync(_bookId, It.IsAny<Book>())).ReturnsAsync(new Book(_bookId, BookTitle, Category)).Callback<Guid, Book>(
                 (id, book) =>
                 {
-                    id.Should().Be(bookId);
+                    id.Should().Be(_bookId);
                     book.Title.Should().Be(BookTitle);
                     book.Category.Should().Be(Category);
                 });
 
             // Act
-            var response = await _booksController.Update(bookId, new UpdateBookRequest()
+            var response = await _booksController.Update(_bookId, new UpdateBookRequest()
             {
                 Title = BookTitle,
                 Category = Category
@@ -189,15 +203,16 @@ namespace BookStore.UnitTests.BookStore.Api
             // Assert
             response.Result.Should().BeOfType<OkObjectResult>();
 
-            AssertBookResponseValue(response, bookId, BookTitle, Category);
+            AssertBookResponseValue(response, _bookId, BookTitle, Category);
+            VerifyLinkGeneratorHasBeenCalledFor(Times.Once(), _bookId);
         }
 
         [Fact]
         public async Task Delete_WhenBookNotFound_ReturnsNotFoundResult()
         {
             // Act
-            _bookServiceMock.Setup(x => x.DeleteAsync(bookId)).ReturnsAsync(false);
-            var response = await _booksController.Delete(bookId);
+            _bookServiceMock.Setup(x => x.DeleteAsync(_bookId)).ReturnsAsync(false);
+            var response = await _booksController.Delete(_bookId);
 
             // Assert
             response.Should().BeOfType<NotFoundResult>();
@@ -207,18 +222,46 @@ namespace BookStore.UnitTests.BookStore.Api
         public async Task Delete_WhenBookFound_ReturnsOkResult()
         {
             // Act
-            _bookServiceMock.Setup(x => x.DeleteAsync(bookId)).ReturnsAsync(true);
-            var response = await _booksController.Delete(bookId);
+            _bookServiceMock.Setup(x => x.DeleteAsync(_bookId)).ReturnsAsync(true);
+            var response = await _booksController.Delete(_bookId);
 
             // Assert
             response.Should().BeOfType<OkResult>();
         }
 
-        private static void AssertBookResponse(BookResponse book, Guid bookId, string bookTitle, string category)
+        private void AssertBookResponse(BookResponse book, Guid bookId, string bookTitle, string category)
         {
             book.Id.Should().Be(bookId);
             book.Title.Should().Be(bookTitle);
             book.Category.Should().Be(category);
+            book.Links.Should().BeEquivalentTo(_links);
+        }
+
+        private void AssertBookResponseValue(ActionResult<BookResponse> response, Guid bookId, string bookTitle, string category)
+        {
+            var value = ((ObjectResult)response.Result).Value;
+            value.Should().BeOfType<BookResponse>();
+
+            var book = (BookResponse)value;
+            AssertBookResponse(book, bookId, bookTitle, category);
+        }
+
+        private void VerifyLinkGeneratorHasNeverBeenCalled()
+        {
+            _linkGeneratorMock.Verify(x => x.CreateLinks(It.IsAny<HttpContext>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<string>(), It.IsAny<Guid>()), Times.Never);
+        }
+
+        private void VerifyLinkGeneratorHasBeenCalledFor(Times times)
+        {
+            _linkGeneratorMock.Verify(x => x.CreateLinks(It.IsAny<HttpContext>(), nameof(BooksController.GetById), nameof(BooksController.Update),
+                nameof(BooksController.Delete), It.IsAny<Guid>()), times);
+        }
+
+        private void VerifyLinkGeneratorHasBeenCalledFor(Times times, Guid guid)
+        {
+            _linkGeneratorMock.Verify(x => x.CreateLinks(It.IsAny<HttpContext>(), nameof(BooksController.GetById), nameof(BooksController.Update),
+                nameof(BooksController.Delete), guid), times);
         }
     }
 }
