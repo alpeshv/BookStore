@@ -11,6 +11,7 @@ Port 3000 is bound to api container port 80 in docker-compose.yml. The current d
 ```
 docker exec -t -i <container_name> /bin/bash
 cd logs
+ls
 cat <filename>.txt
 ```
 
